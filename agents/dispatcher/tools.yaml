@@ -1,0 +1,73 @@
+# Dispatcher — Tools
+
+tools:
+  - name: file_read
+    purpose: Read task briefs, policies, skills registry, and agent definitions
+    approval: auto
+    fallback: escalate to operator if file not found
+    limits:
+      max_file_size_mb: 10
+      allowed_paths:
+        - "agents/"
+        - "skills/"
+        - "policies/"
+        - "templates/"
+        - "runs/"
+        - "memory/"
+        - "docs/"
+
+  - name: file_write
+    purpose: Create run directories, write plans, summaries, and logs
+    approval: auto
+    fallback: escalate to operator if write fails
+    limits:
+      allowed_paths:
+        - "runs/active/"
+        - "runs/completed/"
+        - "runs/failed/"
+        - "memory/run-summaries/"
+        - "memory/approved-decisions/"
+      forbidden_paths:
+        - "src/"
+        - "agents/"
+        - "policies/"
+        - ".git/"
+
+  - name: agent_delegate
+    purpose: Send subtask assignments to specialist agents and receive their outputs
+    approval: auto
+    fallback: retry once, then escalate to operator
+    limits:
+      max_concurrent_delegations: 3
+      timeout_minutes: 30
+      allowed_agents:
+        - research
+        - builder
+        - reviewer
+
+  - name: skills_lookup
+    purpose: Query the skills registry for available capabilities
+    approval: auto
+    fallback: return empty result set
+    limits: none
+
+  - name: policy_lookup
+    purpose: Query approval matrix and policy files
+    approval: auto
+    fallback: assume highest approval level if lookup fails
+    limits: none
+
+  - name: escalate
+    purpose: Send escalation requests to the Operator
+    approval: auto  # escalation itself does not need approval
+    fallback: log escalation and halt
+    limits:
+      max_escalations_per_run: 10
+
+  - name: directory_manage
+    purpose: Create, move, and list run directories
+    approval: auto
+    fallback: escalate to operator
+    limits:
+      allowed_paths:
+        - "runs/"

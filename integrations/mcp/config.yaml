@@ -1,0 +1,52 @@
+# MCP Configuration (Placeholder)
+# This file will configure MCP servers and tool mappings.
+# Not active in Phase 1.
+
+mcp:
+  version: "1.0"
+  status: placeholder
+
+  servers:
+    - name: filesystem
+      description: "File read/write operations"
+      enabled: false
+      config:
+        root_path: "."
+        allowed_operations: [read, write, list]
+
+    - name: git
+      description: "Git operations (branch, worktree, diff)"
+      enabled: false
+      config:
+        repository_path: "."
+        allowed_operations: [branch, worktree, diff, log]
+
+    - name: code_analysis
+      description: "Code analysis tools (lint, type check)"
+      enabled: false
+      config:
+        tools: [ruff, mypy]
+
+    - name: test_runner
+      description: "Test execution (pytest)"
+      enabled: false
+      config:
+        tool: pytest
+        timeout_seconds: 600
+
+    - name: web
+      description: "Web search and URL reading"
+      enabled: false
+      config:
+        max_queries: 20
+        max_urls: 30
+
+  # Middleware configuration
+  middleware:
+    approval_check:
+      enabled: false
+      policy_file: "../../policies/approval-matrix.yaml"
+
+    audit_log:
+      enabled: false
+      log_path: "../../memory/run-summaries/"

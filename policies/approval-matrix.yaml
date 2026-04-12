@@ -1,0 +1,111 @@
+# Approval Matrix
+# Defines what actions require what level of human approval.
+#
+# Levels:
+#   0 - auto: No approval needed. Agent can proceed immediately.
+#   1 - soft: Agent can proceed but must inform the operator.
+#   2 - hard: Agent must wait for explicit operator approval.
+#   3 - blocked: Action is forbidden by default. Requires exceptional override.
+
+approval_levels:
+  level_0_auto:
+    description: "Safe, reversible, read-only or internal-only actions"
+    examples:
+      - Read documentation and source code
+      - Inspect repository structure
+      - Summarize files and findings
+      - Plan tasks and create execution plans
+      - Run lint and tests in isolated environments
+      - Create git worktrees and branches
+      - Draft outputs (reports, plans, notes) without sending or applying
+      - Write to run directories and memory
+      - Search codebases and public documentation
+      - Look up skills and policies
+
+  level_1_soft:
+    description: "Low-risk actions that should be tracked"
+    examples:
+      - Write code in isolated branches or worktrees
+      - Prepare draft workflows
+      - Modify non-production configuration files
+      - Prepare database migrations (without applying)
+      - Create draft communications
+      - Add Python dependencies
+      - Expand scope of a subtask within reason
+      - Read external URLs and documentation
+
+  level_2_hard:
+    description: "Significant actions with real-world impact"
+    examples:
+      - Merge branches to main
+      - Deploy to any environment
+      - Apply database migrations
+      - Send real emails or external communications
+      - Modify live external systems or records
+      - Delete existing source files
+      - Change security-related code
+      - Modify shared library code
+      - Skip a review step
+      - Change CI/CD configuration
+      - Access external APIs that incur cost
+
+  level_3_blocked:
+    description: "Dangerous or irreversible actions. Forbidden by default."
+    examples:
+      - Delete production data
+      - Rotate secrets or credentials
+      - Grant admin access to systems
+      - Transfer funds or make purchases
+      - Irreversible external actions
+      - Force-push or rewrite git history
+      - Modify approval matrix or security policies
+      - Access production databases directly
+      - Bypass approval gates
+
+# Agent-specific approval overrides
+# These override the general levels above for specific agent-action combinations.
+agent_overrides:
+  dispatcher:
+    agent_delegate: 0      # Dispatcher can always delegate
+    escalate: 0             # Dispatcher can always escalate
+    create_run_directory: 0 # Dispatcher manages runs
+
+  research:
+    web_search: 1           # Research can search but should inform
+    read_url: 1             # Research can read URLs but should inform
+
+  builder:
+    file_write_worktree: 0  # Builder can write in worktrees without approval
+    git_branch: 0           # Builder can create branches
+    git_worktree: 0         # Builder can create worktrees
+    run_lint: 0             # Builder can run lint
+    run_tests: 0            # Builder can run tests
+
+  reviewer:
+    run_lint: 0             # Reviewer can run lint
+    run_typecheck: 0        # Reviewer can run type checks
+    run_tests: 0            # Reviewer can run tests
+    git_diff: 0             # Reviewer can view diffs
+
+# Escalation triggers
+# Conditions that automatically trigger escalation regardless of approval level.
+auto_escalation_triggers:
+  - condition: "Any action would affect production systems"
+    escalate_to: operator
+    minimum_level: 3
+
+  - condition: "Cost estimate exceeds $10"
+    escalate_to: operator
+    minimum_level: 2
+
+  - condition: "Agent encounters unhandled error"
+    escalate_to: dispatcher
+    minimum_level: 1
+
+  - condition: "Security vulnerability discovered"
+    escalate_to: operator
+    minimum_level: 2
+
+  - condition: "Scope change exceeds 2x original estimate"
+    escalate_to: operator
+    minimum_level: 2

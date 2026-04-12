@@ -1,0 +1,257 @@
+# Skills Registry
+# Reusable capabilities that agents can invoke.
+# Skills are the unit of work; agents are the unit of accountability.
+
+skills:
+
+  # ─────────────────────────────────────
+  # RESEARCH SKILLS
+  # ─────────────────────────────────────
+
+  - name: research.compare.tools
+    category: research
+    description: >
+      Compare multiple tools, libraries, or services against defined criteria.
+      Produce a structured comparison matrix with pros, cons, and recommendation.
+    required_inputs:
+      - topic: "What is being compared (e.g., 'Python HTTP libraries')"
+      - candidates: "List of options to compare, or 'discover' to find them"
+      - criteria: "Evaluation criteria (e.g., performance, docs, community, license)"
+    expected_outputs:
+      - comparison_matrix: "Table comparing candidates against criteria"
+      - recommendation: "Recommended option with rationale"
+      - risks: "Risks associated with each option"
+    allowed_tools: [file_read, web_search, read_url]
+    done_criteria: "All candidates evaluated against all criteria; recommendation provided"
+    failure_behavior: "Deliver partial comparison with gaps clearly marked"
+
+  - name: research.extract.requirements
+    category: research
+    description: >
+      Extract and structure requirements from specifications, conversations,
+      documents, or existing code. Identify explicit requirements, implicit
+      assumptions, and gaps.
+    required_inputs:
+      - source: "Document, conversation, or codebase to extract from"
+      - scope: "What area to focus on"
+    expected_outputs:
+      - requirements_list: "Structured list of requirements with IDs"
+      - assumptions: "Implicit assumptions found"
+      - gaps: "Missing or unclear requirements"
+    allowed_tools: [file_read, search_codebase]
+    done_criteria: "All requirements extracted, numbered, and categorized"
+    failure_behavior: "Deliver partial list with 'incomplete' flag"
+
+  - name: research.analyze.codebase
+    category: research
+    description: >
+      Analyze an existing codebase to understand architecture, patterns,
+      dependencies, and potential issues.
+    required_inputs:
+      - target: "Repository or directory to analyze"
+      - focus: "Specific aspect to focus on (e.g., 'dependency graph', 'error handling')"
+    expected_outputs:
+      - architecture_summary: "High-level architecture description"
+      - patterns: "Common patterns identified"
+      - issues: "Potential issues or technical debt"
+      - dependencies: "Key dependencies and their roles"
+    allowed_tools: [file_read, search_codebase]
+    done_criteria: "Architecture understood; key patterns and issues identified"
+    failure_behavior: "Deliver partial analysis with 'incomplete areas' noted"
+
+  # ─────────────────────────────────────
+  # CODING SKILLS
+  # ─────────────────────────────────────
+
+  - name: coding.scaffold.service
+    category: coding
+    description: >
+      Scaffold a new service or module with directory structure, boilerplate
+      files, configuration, and basic tests.
+    required_inputs:
+      - service_name: "Name of the service to scaffold"
+      - language: "Programming language"
+      - framework: "Framework to use (if any)"
+      - requirements: "Key requirements the scaffold must support"
+    expected_outputs:
+      - files_created: "List of all files created"
+      - structure: "Directory structure diagram"
+      - setup_instructions: "How to run the scaffolded service"
+    allowed_tools: [file_read, file_write_worktree, git_branch, git_worktree, run_lint]
+    done_criteria: "Service scaffolded; lint passes; basic test runs"
+    failure_behavior: "Deliver partial scaffold with clear documentation of what's missing"
+
+  - name: coding.fix.bug
+    category: coding
+    description: >
+      Diagnose and fix a reported bug. Includes root cause analysis,
+      implementation of fix, and regression test.
+    required_inputs:
+      - bug_description: "What is broken"
+      - reproduction_steps: "How to reproduce"
+      - expected_behavior: "What should happen"
+      - actual_behavior: "What actually happens"
+    expected_outputs:
+      - root_cause: "Explanation of why the bug occurs"
+      - fix_description: "What was changed to fix it"
+      - files_changed: "List of modified files"
+      - regression_test: "Test that prevents recurrence"
+    allowed_tools: [file_read, file_write_worktree, search_codebase, run_tests, run_lint]
+    done_criteria: "Bug fixed; regression test passes; existing tests still pass"
+    failure_behavior: "Document root cause analysis even if fix cannot be completed"
+
+  - name: coding.write.migration
+    category: coding
+    description: >
+      Create a database migration based on schema changes. Includes up and
+      down migrations, validation, and documentation.
+    required_inputs:
+      - schema_change: "Description of the schema change"
+      - current_schema: "Current schema or migration history"
+      - database_type: "Database system (e.g., PostgreSQL, SQLite)"
+    expected_outputs:
+      - migration_file: "Migration file (up and down)"
+      - documentation: "What the migration does and why"
+      - rollback_plan: "How to roll back if needed"
+    allowed_tools: [file_read, file_write_worktree, search_codebase]
+    done_criteria: "Migration created; up and down paths documented; NOT applied"
+    failure_behavior: "Document schema change requirements for manual migration creation"
+
+  - name: coding.implement.feature
+    category: coding
+    description: >
+      Implement a feature based on an approved implementation plan.
+      Includes code, tests, and documentation.
+    required_inputs:
+      - implementation_plan: "Approved plan from research/planning phase"
+      - acceptance_criteria: "Criteria that must be met"
+      - coding_standards: "Applicable coding standards"
+    expected_outputs:
+      - implementation: "Working code in isolated branch"
+      - tests: "Unit tests for new functionality"
+      - implementation_notes: "Documentation of what was built"
+      - change_summary: "Structured summary of all changes"
+    allowed_tools: [file_read, file_write_worktree, git_branch, git_worktree, run_tests, run_lint]
+    done_criteria: "All acceptance criteria met; tests pass; lint passes"
+    failure_behavior: "Deliver partial implementation with clear status of each acceptance criterion"
+
+  # ─────────────────────────────────────
+  # QA SKILLS
+  # ─────────────────────────────────────
+
+  - name: qa.review.implementation
+    category: qa
+    description: >
+      Review a code implementation against its plan, acceptance criteria,
+      and coding standards. Run automated checks and produce structured report.
+    required_inputs:
+      - implementation_plan: "The approved plan"
+      - acceptance_criteria: "Criteria to verify"
+      - branch_or_worktree: "Where the code lives"
+      - coding_standards: "Standards to check against"
+    expected_outputs:
+      - review_report: "Structured review with verdict"
+      - check_results: "Automated check results (lint, type, test)"
+      - issue_list: "Categorized issues with severity"
+    allowed_tools: [file_read, run_lint, run_typecheck, run_tests, git_diff, search_codebase]
+    done_criteria: "All criteria checked; all checks run; verdict issued"
+    failure_behavior: "Issue partial review with 'incomplete' flag and reason"
+
+  - name: qa.run.regression
+    category: qa
+    description: >
+      Run the full test suite to check for regressions after changes.
+    required_inputs:
+      - branch_or_worktree: "Where to run tests"
+      - baseline_branch: "Branch to compare against (usually main)"
+    expected_outputs:
+      - test_results: "Full test results"
+      - regressions: "Any tests that newly fail"
+      - coverage_delta: "Change in test coverage (if available)"
+    allowed_tools: [run_tests, git_diff, file_read]
+    done_criteria: "Full test suite run; regressions identified"
+    failure_behavior: "Report partial results with list of tests that could not run"
+
+  # ─────────────────────────────────────
+  # BROWSER SKILLS (Phase 2+)
+  # ─────────────────────────────────────
+
+  - name: browser.validate.flow
+    category: browser
+    description: >
+      Validate a user flow in a web application by navigating pages,
+      interacting with elements, and verifying expected outcomes.
+    required_inputs:
+      - flow_description: "Steps of the user flow to validate"
+      - target_url: "URL of the application"
+      - expected_outcomes: "What should be true after the flow"
+    expected_outputs:
+      - validation_result: "Pass/fail with evidence"
+      - screenshots: "Screenshots at key steps"
+      - issues_found: "Any issues discovered"
+    allowed_tools: [browser_navigate, browser_click, browser_type, browser_screenshot]
+    done_criteria: "All flow steps executed; outcomes verified"
+    failure_behavior: "Document which steps succeeded and where it failed"
+    status: placeholder  # Not implemented in Phase 1
+
+  # ─────────────────────────────────────
+  # OPS SKILLS (Phase 2+)
+  # ─────────────────────────────────────
+
+  - name: ops.configure.webhook
+    category: ops
+    description: >
+      Configure a webhook integration between systems.
+    required_inputs:
+      - source_system: "System sending the webhook"
+      - target_system: "System receiving the webhook"
+      - event_type: "What events trigger the webhook"
+      - payload_format: "Expected payload structure"
+    expected_outputs:
+      - webhook_config: "Configuration details"
+      - test_result: "Verification that the webhook works"
+      - documentation: "Setup and troubleshooting docs"
+    allowed_tools: [file_write, web_request]
+    done_criteria: "Webhook configured and verified with test event"
+    failure_behavior: "Document configuration and reason for failure"
+    status: placeholder  # Not implemented in Phase 1
+
+  # ─────────────────────────────────────
+  # COMMS SKILLS (Phase 2+)
+  # ─────────────────────────────────────
+
+  - name: comms.draft.status_email
+    category: comms
+    description: >
+      Draft a status update email based on run results and project state.
+    required_inputs:
+      - run_summary: "Summary of the completed run"
+      - audience: "Who the email is for"
+      - key_points: "Points to emphasize"
+    expected_outputs:
+      - email_draft: "Complete email draft"
+      - subject_line: "Proposed subject line"
+    allowed_tools: [file_read, file_write]
+    done_criteria: "Email drafted; ready for operator review before sending"
+    failure_behavior: "Deliver bullet points if full draft cannot be completed"
+    status: placeholder  # Not implemented in Phase 1
+
+  # ─────────────────────────────────────
+  # KNOWLEDGE SKILLS (Phase 2+)
+  # ─────────────────────────────────────
+
+  - name: knowledge.write.postmortem
+    category: knowledge
+    description: >
+      Write a structured postmortem from a failed or problematic run.
+    required_inputs:
+      - run_directory: "Path to the failed run"
+      - incident_description: "What went wrong"
+    expected_outputs:
+      - postmortem_document: "Structured postmortem following template"
+      - action_items: "Concrete follow-up tasks"
+      - pattern_update: "Updates to memory/patterns/"
+    allowed_tools: [file_read, file_write]
+    done_criteria: "Postmortem complete with root cause, timeline, and action items"
+    failure_behavior: "Deliver timeline and root cause analysis even if action items are incomplete"
+    status: placeholder  # Not implemented in Phase 1

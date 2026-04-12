@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Environment / secrets
+.env
+.env.*
+*.key
+*.pem
+
+# Test / coverage
+.pytest_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+
+# Runs (keep structure, ignore contents)
+runs/active/*
+runs/completed/*
+runs/failed/*
+!runs/active/.gitkeep
+!runs/completed/.gitkeep
+!runs/failed/.gitkeep
+
+# Memory (keep structure, ignore contents)
+memory/run-summaries/*
+memory/approved-decisions/*
+memory/patterns/*
+!memory/run-summaries/.gitkeep
+!memory/approved-decisions/.gitkeep
+!memory/patterns/.gitkeep

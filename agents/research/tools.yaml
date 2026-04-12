@@ -1,0 +1,59 @@
+# Research Agent — Tools
+
+tools:
+  - name: file_read
+    purpose: Read source code, documentation, configs, and specs in the repository
+    approval: auto
+    fallback: report file not found in research gaps
+    limits:
+      max_file_size_mb: 10
+      allowed_paths:
+        - "*"  # can read any file in the repository
+      forbidden_paths:
+        - ".env"
+        - "*.key"
+        - "*.pem"
+
+  - name: file_write
+    purpose: Write research reports and logs to the run directory
+    approval: auto
+    fallback: escalate to dispatcher
+    limits:
+      allowed_paths:
+        - "runs/active/"
+      forbidden_paths:
+        - "src/"
+        - "agents/"
+        - "policies/"
+        - ".git/"
+
+  - name: search_codebase
+    purpose: Search for patterns, symbols, and references across the repository
+    approval: auto
+    fallback: manual file reading
+    limits:
+      max_results: 100
+
+  - name: web_search
+    purpose: Search for public documentation, API references, and technical information
+    approval: soft  # Level 1 — inform dispatcher
+    fallback: note gap in research
+    limits:
+      max_queries_per_task: 20
+      allowed_domains: all public
+      forbidden_domains: none
+
+  - name: read_url
+    purpose: Read content from public web pages and documentation sites
+    approval: soft  # Level 1 — inform dispatcher
+    fallback: note as inaccessible source
+    limits:
+      max_urls_per_task: 30
+      max_page_size_mb: 5
+
+  - name: escalate
+    purpose: Escalate to Dispatcher when research is blocked or scope needs adjustment
+    approval: auto
+    fallback: log and halt
+    limits:
+      max_escalations_per_task: 5

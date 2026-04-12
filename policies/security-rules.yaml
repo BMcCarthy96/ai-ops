@@ -1,0 +1,92 @@
+# Security Rules
+# Hard security boundaries for all agents in the AI Ops system.
+
+# Forbidden actions — No agent may perform these under any circumstances.
+forbidden_actions:
+  - action: "Access production databases directly"
+    reason: "All production access must go through approved, audited channels"
+
+  - action: "Store or log secrets, API keys, or credentials"
+    reason: "Secrets must never appear in logs, reports, or source code"
+
+  - action: "Execute arbitrary code from external sources"
+    reason: "Only code within the repository or approved dependencies may be executed"
+
+  - action: "Disable or bypass security controls"
+    reason: "Security controls exist for system integrity"
+
+  - action: "Grant or modify access permissions"
+    reason: "Access management is an operator-only action"
+
+  - action: "Send data to external services without approval"
+    reason: "Data exfiltration risk"
+
+  - action: "Delete or modify audit logs"
+    reason: "Audit trail integrity must be maintained"
+
+# Sensitive file patterns — Files that require extra scrutiny
+sensitive_patterns:
+  - pattern: "*.env"
+    classification: secret
+    access: blocked
+
+  - pattern: "*.key"
+    classification: secret
+    access: blocked
+
+  - pattern: "*.pem"
+    classification: secret
+    access: blocked
+
+  - pattern: "*.p12"
+    classification: secret
+    access: blocked
+
+  - pattern: "*password*"
+    classification: sensitive
+    access: level_2_approval
+
+  - pattern: "*credential*"
+    classification: sensitive
+    access: level_2_approval
+
+  - pattern: "*secret*"
+    classification: sensitive
+    access: level_2_approval
+
+# Code security requirements
+code_security:
+  - rule: "No hardcoded credentials in source code"
+    enforcement: automated_lint
+
+  - rule: "No eval() or exec() with user input"
+    enforcement: automated_lint
+
+  - rule: "Dependencies must not have known critical vulnerabilities"
+    enforcement: manual_review
+
+  - rule: "All network requests must use HTTPS"
+    enforcement: automated_lint
+
+  - rule: "File operations must use allowlisted paths"
+    enforcement: runtime_check
+
+# Isolation requirements
+isolation:
+  - rule: "All code changes must be in isolated worktrees or branches"
+    applies_to: builder
+
+  - rule: "Tests must not affect production state"
+    applies_to: [builder, reviewer]
+
+  - rule: "Research must not modify any systems"
+    applies_to: research
+
+# Incident response
+security_incident:
+  on_discovery:
+    - "Stop current operation immediately"
+    - "Escalate to operator with full details"
+    - "Do not attempt to fix the issue"
+    - "Preserve all evidence and logs"
+    - "Do not disclose details outside the escalation path"

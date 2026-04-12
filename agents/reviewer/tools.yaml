@@ -1,0 +1,76 @@
+# Reviewer Agent — Tools
+
+tools:
+  - name: file_read
+    purpose: Read source code, plans, task briefs, policies, and builder output
+    approval: auto
+    fallback: escalate to dispatcher if file not found
+    limits:
+      max_file_size_mb: 50
+      allowed_paths:
+        - "*"
+      forbidden_paths:
+        - ".env"
+        - "*.key"
+        - "*.pem"
+
+  - name: file_write
+    purpose: Write review reports and logs to the run directory only
+    approval: auto
+    fallback: escalate to dispatcher
+    limits:
+      allowed_paths:
+        - "runs/active/"
+      forbidden_paths:
+        - "src/"
+        - "agents/"
+        - "policies/"
+        - ".git/"
+
+  - name: run_lint
+    purpose: Run ruff linter on code in worktrees
+    approval: auto
+    fallback: log as "lint could not run", continue review
+    limits:
+      tools: ["ruff"]
+      timeout_seconds: 120
+      target: worktree only
+
+  - name: run_typecheck
+    purpose: Run mypy type checker on code in worktrees
+    approval: auto
+    fallback: log as "type check could not run", continue review
+    limits:
+      tools: ["mypy"]
+      timeout_seconds: 180
+      target: worktree only
+
+  - name: run_tests
+    purpose: Run pytest test suites in isolated environments
+    approval: auto
+    fallback: log as "tests could not run", escalate to dispatcher
+    limits:
+      tools: ["pytest"]
+      timeout_seconds: 600
+      forbidden_flags: ["--production", "--live", "--destructive"]
+
+  - name: git_diff
+    purpose: View diffs between worktree/branch and base branch
+    approval: auto
+    fallback: manual file comparison
+    limits:
+      max_diff_size_mb: 10
+
+  - name: search_codebase
+    purpose: Search for patterns, references, and potential regressions
+    approval: auto
+    fallback: manual file reading
+    limits:
+      max_results: 200
+
+  - name: escalate
+    purpose: Escalate critical findings or blockers to Dispatcher
+    approval: auto
+    fallback: log and halt
+    limits:
+      max_escalations_per_task: 5

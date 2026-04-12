@@ -1,0 +1,80 @@
+# Naming Conventions
+# Consistent naming rules across the AI Ops system.
+
+# General principles
+principles:
+  - "Use lowercase with hyphens for file and directory names"
+  - "Use lowercase with underscores for Python modules and variables"
+  - "Use PascalCase for Python class names"
+  - "Use UPPER_SNAKE_CASE for constants"
+  - "Be descriptive but concise"
+  - "Avoid abbreviations unless universally understood"
+
+# File naming
+files:
+  markdown:
+    pattern: "kebab-case.md"
+    examples: ["task-brief.md", "run-lifecycle.md", "agent-map.md"]
+
+  yaml:
+    pattern: "kebab-case.yaml"
+    examples: ["approval-matrix.yaml", "registry.yaml", "tools.yaml"]
+
+  python:
+    pattern: "snake_case.py"
+    examples: ["dispatch_pipeline.py", "run_state.py", "base.py"]
+
+  scripts:
+    pattern: "kebab-case.ps1 or kebab-case.sh"
+    examples: ["create-worktree.ps1", "run-tests.sh"]
+
+# Directory naming
+directories:
+  pattern: "kebab-case"
+  examples: ["run-summaries", "approved-decisions", "browser-operator"]
+
+# Python naming
+python:
+  modules:
+    pattern: "snake_case"
+    examples: ["run_state", "dispatch_pipeline"]
+
+  classes:
+    pattern: "PascalCase"
+    examples: ["RunState", "DispatchPipeline", "BaseAgent"]
+
+  functions:
+    pattern: "snake_case"
+    examples: ["classify_task", "create_run", "validate_output"]
+
+  variables:
+    pattern: "snake_case"
+    examples: ["run_id", "task_brief", "agent_name"]
+
+  constants:
+    pattern: "UPPER_SNAKE_CASE"
+    examples: ["MAX_RETRIES", "DEFAULT_TIMEOUT", "APPROVAL_LEVELS"]
+
+# Run naming
+runs:
+  run_id:
+    pattern: "YYYY-MM-DD-{short-description}"
+    examples: ["2026-04-12-scaffold-auth-module", "2026-04-12-research-db-options"]
+
+  branch:
+    pattern: "ai-ops/{agent}/{run-id}/{description}"
+    examples: ["ai-ops/builder/2026-04-12-scaffold-auth/implement"]
+
+# Agent naming
+agents:
+  directory: "lowercase single word or hyphenated"
+  examples: ["dispatcher", "research", "builder", "reviewer", "browser-operator"]
+
+# Skill naming
+skills:
+  pattern: "{category}.{action}.{target}"
+  examples:
+    - "research.compare.tools"
+    - "coding.scaffold.service"
+    - "qa.review.implementation"
+    - "browser.validate.flow"

@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(PYTHONPATH=src python -m pytest tests --tb=short -q)",
+      "Bash(pip list:*)",
+      "Bash(pyenv versions:*)",
+      "Read(//home/mccarthyb/.pyenv/versions/**)",
+      "Bash(~/miniforge3/bin/python --version)",
+      "Bash(~/miniforge3/bin/pip list:*)",
+      "Bash(~/miniforge3/bin/conda run:*)",
+      "Bash(~/miniforge3/bin/conda list:*)",
+      "Bash(pip install:*)",
+      "Bash(/home/mccarthyb/miniforge3/envs/pl-bind/bin/python3.11 --version)",
+      "Bash(/home/mccarthyb/miniforge3/envs/pl-bind/bin/pip list:*)",
+      "Bash(PYTHONPATH=src /home/mccarthyb/miniforge3/envs/pl-bind/bin/python3.11 -m pytest tests --tb=short -q)",
+      "Bash(/home/mccarthyb/miniforge3/envs/pl-bind/bin/pip install:*)",
+      "Bash(PYTHONPATH=src /home/mccarthyb/miniforge3/envs/pl-bind/bin/python3.11 -m pytest tests/test_pipeline.py::TestSchemaValidation -v)",
+      "Bash(PYTHONPATH=src /home/mccarthyb/miniforge3/envs/pl-bind/bin/python3.11 -m pytest tests/test_pipeline.py::TestConditionalRouting -v)"
+    ]
+  }
+}

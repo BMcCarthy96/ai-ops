@@ -1,0 +1,76 @@
+# Data Handling Policy
+# How data is classified and handled across the AI Ops system.
+
+# Data classifications
+classifications:
+  public:
+    description: "Information that can be freely shared"
+    examples:
+      - Open source documentation
+      - Public API references
+      - Published technical specifications
+    handling:
+      - "No special handling required"
+      - "Can appear in logs and reports"
+
+  internal:
+    description: "Internal project information"
+    examples:
+      - Source code
+      - Architecture decisions
+      - Run summaries and reports
+      - Agent outputs
+    handling:
+      - "Keep within the AI Ops system"
+      - "Can appear in logs and reports"
+      - "Do not share externally without operator approval"
+
+  sensitive:
+    description: "Information requiring careful handling"
+    examples:
+      - Personal identifiable information (PII)
+      - Internal business metrics
+      - Security findings
+      - Vulnerability details
+    handling:
+      - "Minimize exposure in logs and reports"
+      - "Redact when possible"
+      - "Reference by location rather than content"
+      - "Level 2 approval required for external sharing"
+
+  secret:
+    description: "Information that must never be exposed"
+    examples:
+      - API keys and tokens
+      - Passwords and credentials
+      - Private keys and certificates
+      - Database connection strings
+    handling:
+      - "Never log, display, or include in reports"
+      - "Never store in source code or configuration"
+      - "Use environment variables or secret managers"
+      - "Immediately escalate if discovered in inappropriate locations"
+
+# Data retention
+retention:
+  run_directories:
+    active: "Until run completes or fails"
+    completed: "90 days, then archive"
+    failed: "90 days, then archive"
+
+  memory:
+    run_summaries: "Indefinite"
+    approved_decisions: "Indefinite"
+    patterns: "Indefinite, with periodic review"
+
+  logs:
+    agent_logs: "30 days"
+    escalation_logs: "90 days"
+    security_logs: "1 year"
+
+# Data minimization
+minimization:
+  - "Only collect data necessary for the current task"
+  - "Remove temporary data after task completion"
+  - "Summarize rather than store raw data when possible"
+  - "Prefer references over copies"

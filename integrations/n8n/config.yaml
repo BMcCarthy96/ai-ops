@@ -1,0 +1,52 @@
+# n8n Configuration (Placeholder)
+# This file will configure n8n workflows and integrations.
+# Not active in Phase 1.
+
+n8n:
+  version: "1.0"
+  status: placeholder
+
+  instance:
+    url: ""  # To be configured
+    api_key: ""  # Reference to secret, never store here
+    enabled: false
+
+  workflows:
+    - name: task_intake
+      description: "Receive tasks from external systems"
+      trigger: webhook
+      enabled: false
+      config:
+        endpoint: "/api/intake"
+        method: POST
+        auth: bearer_token
+
+    - name: run_notification
+      description: "Send notifications when runs complete"
+      trigger: internal_event
+      enabled: false
+      config:
+        events: [run_completed, run_failed]
+        channels: [slack, email]
+
+    - name: daily_summary
+      description: "Generate and send daily operations summary"
+      trigger: schedule
+      enabled: false
+      config:
+        cron: "0 9 * * 1-5"  # 9 AM weekdays
+        timezone: "America/New_York"
+
+    - name: webhook_relay
+      description: "Relay external webhooks to appropriate agents"
+      trigger: webhook
+      enabled: false
+      config:
+        endpoint: "/api/webhook"
+        routing_rules: []  # To be defined
+
+  # Security
+  security:
+    all_outbound_actions_require: level_2_approval
+    log_all_executions: true
+    credential_storage: environment_variables

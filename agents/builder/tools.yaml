@@ -1,0 +1,78 @@
+# Builder Agent — Tools
+
+tools:
+  - name: file_read
+    purpose: Read source code, configs, plans, and documentation
+    approval: auto
+    fallback: escalate to dispatcher if file not found
+    limits:
+      max_file_size_mb: 50
+      allowed_paths:
+        - "*"
+      forbidden_paths:
+        - ".env"
+        - "*.key"
+        - "*.pem"
+
+  - name: file_write
+    purpose: Create and modify source code, tests, and configs in isolated worktrees
+    approval: auto
+    fallback: escalate to dispatcher
+    limits:
+      allowed_paths:
+        - "runs/active/"  # implementation notes
+      # Source code writes are allowed only in worktrees (enforced by isolation)
+
+  - name: file_write_worktree
+    purpose: Write source code and tests in isolated worktree only
+    approval: auto
+    fallback: escalate to dispatcher
+    limits:
+      max_file_size_mb: 10
+      forbidden_paths:
+        - ".git/"
+        - "policies/"
+        - "agents/"
+
+  - name: git_branch
+    purpose: Create branches for isolated work
+    approval: auto
+    fallback: escalate to dispatcher
+    limits:
+      naming_pattern: "ai-ops/{agent}/{run-id}/{description}"
+      forbidden_bases:
+        - "main"
+        - "production"
+        - "release/*"
+
+  - name: git_worktree
+    purpose: Create and manage git worktrees for isolated implementation
+    approval: auto
+    fallback: escalate to dispatcher
+    limits:
+      max_worktrees: 3
+      worktree_base_path: "../worktrees/"
+
+  - name: run_lint
+    purpose: Run linting tools on code in the worktree
+    approval: auto
+    fallback: log lint failure, continue
+    limits:
+      tools: ["ruff", "mypy"]
+      timeout_seconds: 120
+
+  - name: run_tests
+    purpose: Run unit tests in the worktree
+    approval: auto
+    fallback: log test failure, report to dispatcher
+    limits:
+      tools: ["pytest"]
+      timeout_seconds: 300
+      forbidden_flags: ["--production", "--live"]
+
+  - name: escalate
+    purpose: Escalate blockers or questions to Dispatcher
+    approval: auto
+    fallback: log and halt
+    limits:
+      max_escalations_per_task: 5

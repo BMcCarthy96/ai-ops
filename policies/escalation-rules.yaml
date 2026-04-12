@@ -1,0 +1,97 @@
+# Escalation Rules
+# When and how agents escalate issues to higher authority.
+
+escalation_chain:
+  - from: any_agent
+    to: dispatcher
+    description: "Default escalation path for all specialist agents"
+
+  - from: dispatcher
+    to: operator
+    description: "Dispatcher escalates to human operator"
+
+  - from: any_agent
+    to: operator
+    description: "Direct escalation for critical security issues (bypasses dispatcher)"
+    condition: "Critical security vulnerability or data breach risk"
+
+# Escalation triggers by category
+triggers:
+  scope:
+    - trigger: "Task scope is ambiguous or contradictory"
+      action: escalate_to_dispatcher
+      urgency: normal
+
+    - trigger: "Scope has grown beyond 2x original estimate"
+      action: escalate_to_operator
+      urgency: high
+
+    - trigger: "Task requires skills not available in the system"
+      action: escalate_to_operator
+      urgency: normal
+
+  security:
+    - trigger: "Security vulnerability discovered in existing code"
+      action: escalate_to_operator
+      urgency: critical
+
+    - trigger: "Credentials or secrets found in source code"
+      action: escalate_to_operator
+      urgency: critical
+
+    - trigger: "Action would require accessing production systems"
+      action: escalate_to_operator
+      urgency: high
+
+  failure:
+    - trigger: "Agent cannot complete assigned task"
+      action: escalate_to_dispatcher
+      urgency: normal
+
+    - trigger: "Agent has failed the same subtask twice"
+      action: escalate_to_operator
+      urgency: high
+
+    - trigger: "Automated checks fail with unknown errors"
+      action: escalate_to_dispatcher
+      urgency: normal
+
+  conflict:
+    - trigger: "Two agents produce contradictory results"
+      action: escalate_to_operator
+      urgency: high
+
+    - trigger: "Review verdict is FAIL on critical acceptance criteria"
+      action: escalate_to_operator
+      urgency: high
+
+  cost:
+    - trigger: "Action would incur external costs"
+      action: escalate_to_operator
+      urgency: normal
+
+    - trigger: "Estimated cost exceeds $10"
+      action: escalate_to_operator
+      urgency: high
+
+# Escalation format
+escalation_format:
+  required_fields:
+    - source_agent: "Agent raising the escalation"
+    - run_id: "Current run identifier"
+    - trigger: "What triggered the escalation"
+    - context: "Relevant context and details"
+    - recommendation: "Agent's recommended action"
+    - urgency: "low | normal | high | critical"
+    - options: "Available options for the decision-maker"
+
+# Timeouts
+timeouts:
+  operator_response:
+    normal: "24h"
+    high: "4h"
+    critical: "30min"
+  dispatcher_response:
+    normal: "5min"
+    high: "1min"
+    critical: "immediate"
