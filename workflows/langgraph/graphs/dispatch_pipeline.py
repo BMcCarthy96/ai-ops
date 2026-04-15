@@ -211,11 +211,15 @@ def dispatcher_node(state: RunState) -> dict[str, Any]:
         _cls = output.result.get("classification")
         if isinstance(_cls, dict) and isinstance(_cls.get("required_agents"), list):
             _raw: list[str] = _cls["required_agents"]
-            _normalized = [
+            _aliased = [
                 _AGENT_NAME_ALIASES.get(n.lower(), n.lower())
                 for n in _raw
                 if isinstance(n, str)
             ]
+            # Deduplicate while preserving first-occurrence order.
+            # Multiple LLM-produced synonyms (e.g. ["Coder", "Tester", "Reviewer"])
+            # can map to the same canonical role and must not appear twice.
+            _normalized = list(dict.fromkeys(_aliased))
             if _normalized != _raw:
                 logging.info(
                     "dispatcher required_agents normalized: %r → %r",

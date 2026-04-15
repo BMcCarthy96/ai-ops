@@ -1005,6 +1005,94 @@ class TestAgentAliasNormalization:
         assert reviewer_subtask["id"] == 2
         assert research_subtask is None  # not in plan — correct
 
+    # ------------------------------------------------------------------
+    # Deduplicate normalized required_agents (smoke-031 regression guard)
+    # ------------------------------------------------------------------
+
+    def test_duplicate_synonyms_deduplicated_in_required_agents(self, stub_pipeline, monkeypatch):
+        """Synonyms that resolve to the same role must appear only once after normalization.
+
+        Regression guard for smoke-031: ['Coder', 'Tester', 'Reviewer'] all collapsed
+        to ['builder', 'reviewer', 'reviewer'] before the fix — reviewer appeared twice.
+        """
+        from ai_ops.agents.base import TaskStatus
+        from ai_ops.agents.dispatcher import DispatcherAgent
+
+        def duplicate_synonyms(self, agent_input, output):
+            output.status = TaskStatus.COMPLETED
+            output.result = {
+                "classification": {
+                    "task_type": "build",
+                    "complexity": "simple",
+                    "estimated_subtasks": 2,
+                    # 'Coder' → builder, 'Tester' → reviewer, 'Reviewer' → reviewer
+                    "required_agents": ["Coder", "Tester", "Reviewer"],
+                },
+                "plan": {
+                    "run_id": agent_input.run_id,
+                    "subtasks": [
+                        {
+                            "id": 1,
+                            "assigned_agent": "Coder",
+                            "description": agent_input.description,
+                            "depends_on": [],
+                            "approval_level": 0,
+                        },
+                        {
+                            "id": 2,
+                            "assigned_agent": "Reviewer",
+                            "description": agent_input.description,
+                            "depends_on": [1],
+                            "approval_level": 0,
+                        },
+                    ],
+                    "execution_order": [1, 2],
+                },
+            }
+            return output
+
+        monkeypatch.setattr(DispatcherAgent, "execute", duplicate_synonyms)
+        pipeline, _ = stub_pipeline
+        result = pipeline.invoke({
+            "run_id": "alias-norm-dedup-001",
+            "task_description": "Implement a queue",
+            "acceptance_criteria": [],
+            "constraints": [],
+            "approval_level": 0,
+        })
+
+        assert result["current_stage"] == "done"
+        # Builder and reviewer each appear exactly once in required_agents
+        required = (
+            result.get("dispatcher_output", {})
+            .get("classification", {})
+            .get("required_agents", [])
+        )
+        assert required.count("builder") == 1, f"'builder' duplicated: {required}"
+        assert required.count("reviewer") == 1, f"'reviewer' duplicated: {required}"
+        assert len(required) == 2, f"Expected exactly 2 agents, got {required}"
+        # Pipeline must have routed correctly
+        assert result.get("builder_output"), "builder node did not run"
+        assert result.get("reviewer_output"), "reviewer node did not run"
+
+    def test_deduplicated_required_agents_preserves_order(self):
+        """Deduplication preserves first-occurrence order, not last."""
+        # Simulate the normalization expression in dispatcher_node directly
+        from workflows.langgraph.graphs.dispatch_pipeline import _AGENT_NAME_ALIASES
+
+        raw = ["Researcher", "Coder", "Tester", "Reviewer", "Analyst"]
+        aliased = [
+            _AGENT_NAME_ALIASES.get(n.lower(), n.lower())
+            for n in raw
+        ]
+        deduped = list(dict.fromkeys(aliased))
+
+        # research appears first (Researcher), then builder (Coder), then reviewer (Tester)
+        # Analyst → research (duplicate, dropped); Reviewer → reviewer (duplicate, dropped)
+        assert deduped == ["research", "builder", "reviewer"], (
+            f"Unexpected deduped order: {deduped}"
+        )
+
 
 class TestConditionalRouting:
     """Inter-node routing respects required_agents throughout the chain, not just at entry."""

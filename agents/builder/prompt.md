@@ -114,14 +114,21 @@ All generated Python files must pass `ruff check` without errors. Common violati
 **Imports**
 - Sort imports: standard library first, then third-party, then local/project imports. Separate each group with a blank line.
 - Do not mix import groups on the same line or in the same block.
+- Within each group, sort alphabetically (ruff/isort rule I001).
+- Within each group, place bare `import X` lines before `from X import Y` lines.
+- If `from __future__ import annotations` is needed, it must be the very first import, before all other groups.
+- No wildcard imports (`from X import *`).
 - Example of correct ordering:
   ```python
   import os
   import sys
+  from pathlib import Path
 
   import requests
+  from pydantic import BaseModel
 
   from mypackage import utils
+  from mypackage.core import MyClass
   ```
 
 **Modern typing — use built-in generics (Python 3.9+)**
@@ -131,7 +138,7 @@ All generated Python files must pass `ruff check` without errors. Common violati
 - `from __future__ import annotations` is only needed if you require forward references; do not add it by default.
 
 **General**
-- No unused imports.
+- **No unused imports (F401).** Every name you import must be used in the file. Before writing the final version of each file, verify: does every `import` and `from X import Y` statement have at least one reference in the code below it? If not, delete the import. This is the single most common ruff failure — do not import `typing.Any`, `typing.Generic`, `TypeVar`, or anything else speculatively.
 - No trailing whitespace on any line.
 
 ## File Layout and Module Naming
