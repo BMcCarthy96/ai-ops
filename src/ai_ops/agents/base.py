@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import uuid
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
@@ -199,26 +200,39 @@ class BaseAgent(ABC):
         """
         Parse a JSON response from the LLM.
 
-        Handles common issues like markdown code fences around JSON.
-
-        Args:
-            response: Raw LLM response string.
-
-        Returns:
-            Parsed dict.
+        Handles three common LLM output patterns:
+        1. Pure JSON: {"key": "value"}
+        2. Markdown fence: ```json\\n{...}\\n```
+        3. Prose prefix: "Here is the summary:\\n\\n{...}"
 
         Raises:
-            json.JSONDecodeError: If parsing fails after cleanup.
+            json.JSONDecodeError: If no valid JSON object is found after all
+                extraction attempts.
         """
         text = response.strip()
 
         # Strip markdown code fences if present
         if text.startswith("```"):
             lines = text.split("\n")
-            # Remove first line (```json or ```) and last line (```)
-            lines = [l for l in lines if not l.strip().startswith("```")]
+            lines = [line for line in lines if not line.strip().startswith("```")]
             text = "\n".join(lines).strip()
 
+        # Fast path: already a bare JSON object or array
+        if text.startswith(("{", "[")):
+            return json.loads(text)
+
+        # Slow path: prose prefix — extract the outermost {...} block.
+        # Handles "Here is the summary:\n\n{...}" style responses that the
+        # model sometimes produces on larger tasks despite being instructed
+        # to output JSON only.
+        match = re.search(r"\{[\s\S]*\}", text)
+        if match:
+            try:
+                return json.loads(match.group())
+            except json.JSONDecodeError:
+                pass  # greedy match captured too much; fall through
+
+        # Nothing parseable — raise with the original text so callers can log it
         return json.loads(text)
 
     @abstractmethod

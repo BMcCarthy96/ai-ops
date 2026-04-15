@@ -147,7 +147,7 @@ class DispatcherAgent(BaseAgent):
             subtask = {
                 "id": i,
                 "assigned_agent": agent_name,
-                "description": f"{agent_name.title()} phase for: {agent_input.description}",
+                "description": agent_input.description,
                 "depends_on": [i - 1] if i > 1 else [],
                 "approval_level": 0,
             }

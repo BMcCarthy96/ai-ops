@@ -36,10 +36,12 @@ class RunState(TypedDict, total=False):
     status: str
     errors: list[str]
     escalations: list[str]
+    revision_count: int  # number of builder revisions completed so far (0 = initial run)
 
     # Approval tracking
     approval_decisions: list[dict[str, Any]]
 
     # Persistence
     run_dir: str
+    worktree_path: str
     started_at: str

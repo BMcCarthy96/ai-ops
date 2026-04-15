@@ -111,6 +111,7 @@ class RunPersistence:
             "agents_used": classification.get("required_agents", []),
             "approval_level": state.get("approval_level", 0),
             "reviewer_verdict": reviewer_out.get("verdict", "none"),
+            "revision_count": state.get("revision_count", 0),
             "errors": state.get("errors", []),
             "escalations": state.get("escalations", []),
         }

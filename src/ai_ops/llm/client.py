@@ -21,7 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import os
-from typing import Protocol, runtime_checkable
+from typing import Callable, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
@@ -129,6 +129,113 @@ class AnthropicClient:
         )
 
         return response_text
+
+    def complete_with_tools(
+        self,
+        system: str,
+        user: str,
+        tools: list[dict],
+        tool_executor: Callable[[str, dict], str],
+        max_iterations: int = 10,
+    ) -> tuple[str, list[dict]]:
+        """
+        Run a bounded tool-call loop with the Anthropic API.
+
+        Sends the initial message, then repeatedly executes tool calls and
+        feeds results back until the model stops calling tools (stop_reason
+        == "end_turn") or the iteration cap is reached.
+
+        Args:
+            system: System prompt.
+            user: Initial user message.
+            tools: List of Anthropic tool schema dicts.
+            tool_executor: Callable(tool_name, tool_input) -> result_str.
+                           Called synchronously for each tool_use block.
+            max_iterations: Maximum number of API roundtrips (default: 10).
+
+        Returns:
+            (final_text, tool_call_log) where final_text is the model's last
+            text response and tool_call_log is a list of
+            {"tool", "input", "result"} dicts for every tool call made.
+        """
+        messages: list[dict] = [{"role": "user", "content": user}]
+        tool_call_log: list[dict] = []
+        final_text = ""
+
+        for iteration in range(max_iterations):
+            response = self._client.messages.create(
+                model=self._model,
+                max_tokens=self._max_tokens,
+                system=system,
+                tools=tools,
+                messages=messages,
+            )
+
+            logger.debug(
+                "Tool loop iteration %d: stop_reason=%s, blocks=%d",
+                iteration,
+                response.stop_reason,
+                len(response.content),
+            )
+
+            # Collect text from this turn
+            text_parts = [b.text for b in response.content if b.type == "text"]
+            if text_parts:
+                final_text = "".join(text_parts)
+
+            tool_use_blocks = [b for b in response.content if b.type == "tool_use"]
+
+            # No tool calls or natural end → we're done
+            if response.stop_reason == "end_turn" or not tool_use_blocks:
+                break
+
+            # Append assistant turn (convert SDK objects to plain dicts so the
+            # SDK serialises correctly when passed back in subsequent calls)
+            assistant_content = []
+            for b in response.content:
+                if b.type == "text":
+                    assistant_content.append({"type": "text", "text": b.text})
+                elif b.type == "tool_use":
+                    assistant_content.append({
+                        "type": "tool_use",
+                        "id": b.id,
+                        "name": b.name,
+                        "input": b.input,
+                    })
+            messages.append({"role": "assistant", "content": assistant_content})
+
+            # Execute each tool call and build the user tool_result turn
+            tool_results = []
+            for block in tool_use_blocks:
+                try:
+                    result = tool_executor(block.name, block.input)
+                    tool_call_log.append({
+                        "tool": block.name,
+                        "input": block.input,
+                        "result": result,
+                    })
+                except Exception as exc:
+                    result = f"Error executing {block.name}: {exc}"
+                    logger.warning("Tool %s failed: %s", block.name, exc)
+                    tool_call_log.append({
+                        "tool": block.name,
+                        "input": block.input,
+                        "error": str(exc),
+                    })
+                tool_results.append({
+                    "type": "tool_result",
+                    "tool_use_id": block.id,
+                    "content": str(result),
+                })
+
+            messages.append({"role": "user", "content": tool_results})
+        else:
+            # Exited via for-loop exhaustion (hit cap without break)
+            logger.warning(
+                "Tool-call loop hit max_iterations=%d without end_turn", max_iterations
+            )
+
+        return final_text, tool_call_log
 
 
 class StubClient:

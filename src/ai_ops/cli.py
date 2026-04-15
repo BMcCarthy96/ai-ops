@@ -34,6 +34,7 @@ if _repo_root not in sys.path:
 from ai_ops.llm.client import create_client
 from ai_ops.runtime.approval import AutoApprovalHandler, InteractiveApprovalHandler
 from ai_ops.runtime.persistence import RunPersistence
+from ai_ops.runtime.worktree import WorktreeManager
 
 
 def main() -> None:
@@ -98,6 +99,9 @@ Examples:
         else InteractiveApprovalHandler()
     )
     persistence = RunPersistence()
+    # Worktree lifecycle is only meaningful when persisting run artifacts.
+    # --no-persist disables both the run directory and the worktree.
+    worktree_manager = WorktreeManager() if not args.no_persist else None
 
     print("=" * 60)
     print("  AI Ops — Dispatch Pipeline")
@@ -106,6 +110,7 @@ Examples:
     print(f"  LLM:       {llm_client.provider_name} ({llm_client.model_name})")
     print(f"  Approval:  {'auto' if args.no_interactive else 'interactive'}")
     print(f"  Persist:   {'yes' if not args.no_persist else 'no'}")
+    print(f"  Worktree:  {'yes' if worktree_manager else 'no'}")
     print(f"  Task:      {args.task}")
     if args.criteria:
         print(f"  Criteria:  {len(args.criteria)} items")
@@ -126,6 +131,7 @@ Examples:
         approval_handler=approval_handler,
         persistence=persistence,
         persist_results=not args.no_persist,
+        worktree_manager=worktree_manager,
     )
 
     initial_state = {
@@ -169,6 +175,9 @@ Examples:
     reviewer_out = result.get("reviewer_output", {})
     if reviewer_out:
         print(f"  Verdict:   {reviewer_out.get('verdict', 'none')}")
+        revision_count = result.get("revision_count", 0)
+        if revision_count:
+            print(f"  Revisions: {revision_count}")
 
     # Approval decisions
     decisions = result.get("approval_decisions", [])

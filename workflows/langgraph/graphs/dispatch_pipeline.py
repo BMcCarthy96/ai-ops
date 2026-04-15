@@ -20,6 +20,7 @@ Usage:
 from __future__ import annotations
 
 import logging
+import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -38,6 +39,7 @@ from ai_ops.agents.reviewer import ReviewerAgent
 from ai_ops.llm.client import LLMClient, StubClient, create_client
 from ai_ops.runtime.approval import ApprovalHandler, ApprovalResult, AutoApprovalHandler
 from ai_ops.runtime.persistence import RunPersistence
+from ai_ops.runtime.worktree import WorktreeManager
 
 from langgraph.graph import END, StateGraph
 
@@ -60,20 +62,39 @@ from workflows.langgraph.state.run_state import RunState
 
 _KNOWN_AGENTS: frozenset[str] = frozenset({"research", "builder", "reviewer"})
 
+# Maximum number of builder revisions allowed after an initial reviewer FAIL.
+# With _MAX_REVISIONS = 2: initial run + up to 2 retries = 3 total reviewer attempts.
+_MAX_REVISIONS: int = 2
+
 # Alias map: lowercase LLM-produced names → canonical pipeline names.
 # Handles title-case and role-style variants that real LLMs commonly emit.
 # Add entries here when new patterns are observed in live runs.
 _AGENT_NAME_ALIASES: dict[str, str] = {
+    # --- research ---
     "research": "research",
     "researcher": "research",
+    "analyst": "research",
+    "investigator": "research",
+    "analysis": "research",      # LLMs sometimes use the phase name as a role
+    # --- builder ---
     "builder": "builder",
     "engineer": "builder",
     "developer": "builder",
     "dev": "builder",
+    "codebuilder": "builder",    # observed in smoke-026 (LLM produced "CodeBuilder")
+    "coder": "builder",
+    "programmer": "builder",
+    "implementer": "builder",
+    "implementation": "builder", # LLMs sometimes use the phase name as a role
+    # --- reviewer ---
     "reviewer": "reviewer",
     "review": "reviewer",
     "qa": "reviewer",
     "tester": "reviewer",
+    "evaluator": "reviewer",
+    "validator": "reviewer",
+    "verifier": "reviewer",
+    "checker": "reviewer",
 }
 
 
@@ -87,6 +108,7 @@ _llm_client: LLMClient = StubClient()
 _approval_handler: ApprovalHandler = AutoApprovalHandler()
 _persistence: RunPersistence = RunPersistence()
 _persist_results: bool = True
+_worktree_manager: WorktreeManager | None = None
 
 
 # ─────────────────────────────────────────────────────────
@@ -95,24 +117,76 @@ _persist_results: bool = True
 
 
 def init_node(state: RunState) -> dict[str, Any]:
-    """Initialize the run: create run directory, record start time."""
+    """Initialize the run: create run directory, create worktree, record start time."""
     run_id = state.get("run_id", "")
     started_at = datetime.now(timezone.utc).isoformat()
     run_dir = ""
+    worktree_path = ""
 
     if _persist_results and run_id:
         path = _persistence.create_run_dir(run_id)
         run_dir = str(path)
 
+    if _persist_results and _worktree_manager and run_id:
+        try:
+            wt_path = _worktree_manager.create(run_id)
+            worktree_path = str(wt_path)
+        except RuntimeError as exc:
+            logging.warning("Failed to create worktree for run %s: %s", run_id, exc)
+
     return {
         "started_at": started_at,
         "run_dir": run_dir,
+        "worktree_path": worktree_path,
         "current_stage": "initialized",
         "status": "running",
         "errors": [],
         "escalations": [],
         "approval_decisions": [],
+        "revision_count": 0,
     }
+
+
+_SUBTASK_TEMPLATE_RE = re.compile(r"^\w+\s+phase\s+for\s*:", re.IGNORECASE)
+
+
+def _is_template_subtask_description(description: str) -> bool:
+    """Return True if description is a generated template like 'Builder phase for: ...'."""
+    stripped = description.strip()
+    return not stripped or bool(_SUBTASK_TEMPLATE_RE.match(stripped))
+
+
+def _sanitize_plan_subtask_descriptions(plan: dict, task_description: str) -> dict:
+    """Replace template-pattern subtask descriptions with the actual task_description.
+
+    Guards against both the heuristic fallback in dispatcher.py and any LLM that
+    outputs '<AgentName> phase for: ...' templates instead of concrete descriptions.
+    Only fires on confirmed template matches; leaves concrete descriptions untouched.
+    """
+    if not isinstance(plan, dict) or not task_description:
+        return plan
+    subtasks = plan.get("subtasks", [])
+    if not isinstance(subtasks, list):
+        return plan
+
+    sanitized = []
+    replaced = False
+    for subtask in subtasks:
+        if not isinstance(subtask, dict):
+            sanitized.append(subtask)
+            continue
+        desc = subtask.get("description", "")
+        if _is_template_subtask_description(desc):
+            logging.warning(
+                "Subtask %s description is a template (%r) — replacing with task_description",
+                subtask.get("id", "?"),
+                desc,
+            )
+            subtask = {**subtask, "description": task_description}
+            replaced = True
+        sanitized.append(subtask)
+
+    return {**plan, "subtasks": sanitized} if replaced else plan
 
 
 def dispatcher_node(state: RunState) -> dict[str, Any]:
@@ -197,6 +271,15 @@ def dispatcher_node(state: RunState) -> dict[str, Any]:
             logging.warning(_msg)
             _schema_errors.append(_msg)
 
+    # Gate: replace template subtask descriptions before they reach downstream agents
+    if output.status == TaskStatus.COMPLETED:
+        _plan = output.result.get("plan", {})
+        _sanitized_plan = _sanitize_plan_subtask_descriptions(
+            _plan, state.get("task_description", "")
+        )
+        if _sanitized_plan is not _plan:
+            output.result["plan"] = _sanitized_plan
+
     # Persist dispatcher output
     if _persist_results and state.get("run_id"):
         _persistence.save_agent_output(state["run_id"], "dispatcher", output.model_dump())
@@ -258,11 +341,15 @@ def approval_gate_node(state: RunState) -> dict[str, Any]:
 def research_node(state: RunState) -> dict[str, Any]:
     """Research node — investigates the topic and produces findings."""
     agent = ResearchAgent(llm_client=_llm_client)
+    _subtask = _get_subtask_for_agent(state, "research")
     agent_input = AgentInput(
         run_id=state.get("run_id", ""),
-        description=state.get("task_description", ""),
+        description=_subtask["description"] if _subtask else state.get("task_description", ""),
         constraints=state.get("constraints", []),
-        context={"dispatcher_output": state.get("dispatcher_output", {})},
+        context={
+            "dispatcher_output": state.get("dispatcher_output", {}),
+            "subtask": _subtask or {},
+        },
         assigned_by="dispatcher",
     )
 
@@ -289,13 +376,36 @@ def research_node(state: RunState) -> dict[str, Any]:
 
 
 def builder_node(state: RunState) -> dict[str, Any]:
-    """Builder node — implements the plan based on research findings."""
+    """Builder node — implements the plan or revises based on reviewer feedback."""
     agent = BuilderAgent(llm_client=_llm_client)
+    _subtask = _get_subtask_for_agent(state, "builder")
+    _revision_count = state.get("revision_count", 0)
+
+    context: dict[str, Any] = {
+        "research_output": state.get("research_output", {}),
+        "subtask": _subtask or {},
+        "worktree_path": state.get("worktree_path", ""),
+    }
+
+    # On a revision run, pass structured feedback from the prior reviewer verdict
+    # so the builder knows exactly which criteria failed and what the findings were.
+    if _revision_count > 0:
+        prior_review = state.get("reviewer_output", {})
+        context["revision_feedback"] = {
+            "attempt": _revision_count,
+            "prior_verdict": prior_review.get("verdict", ""),
+            "failed_criteria": [
+                c for c in prior_review.get("acceptance_criteria", [])
+                if c.get("status") in ("FAIL", "PARTIAL")
+            ],
+            "findings": prior_review.get("findings", []),
+        }
+
     agent_input = AgentInput(
         run_id=state.get("run_id", ""),
-        description=state.get("task_description", ""),
+        description=_subtask["description"] if _subtask else state.get("task_description", ""),
         acceptance_criteria=state.get("acceptance_criteria", []),
-        context={"research_output": state.get("research_output", {})},
+        context=context,
         assigned_by="dispatcher",
     )
 
@@ -324,9 +434,10 @@ def builder_node(state: RunState) -> dict[str, Any]:
 def reviewer_node(state: RunState) -> dict[str, Any]:
     """Reviewer node — reviews the implementation or research against acceptance criteria."""
     agent = ReviewerAgent(llm_client=_llm_client)
+    _subtask = _get_subtask_for_agent(state, "reviewer")
     agent_input = AgentInput(
         run_id=state.get("run_id", ""),
-        description=state.get("task_description", ""),
+        description=_subtask["description"] if _subtask else state.get("task_description", ""),
         acceptance_criteria=state.get("acceptance_criteria", []),
         context={
             "build_output": state.get("builder_output", {}),
@@ -336,6 +447,8 @@ def reviewer_node(state: RunState) -> dict[str, Any]:
                 .get("classification", {})
                 .get("task_type", "")
             ),
+            "subtask": _subtask or {},
+            "worktree_path": state.get("worktree_path", ""),
         },
         assigned_by="dispatcher",
     )
@@ -356,13 +469,29 @@ def reviewer_node(state: RunState) -> dict[str, Any]:
 
     verdict = output.result.get("verdict", "FAIL")
     final_status = "completed" if verdict != "FAIL" else "needs_revision"
+    revision_count = state.get("revision_count", 0)
+    _escalations = list(state.get("escalations", [])) + list(output.escalations)
+
+    if verdict == "FAIL":
+        new_revision_count = revision_count + 1
+        if new_revision_count > _MAX_REVISIONS:
+            # All revision attempts exhausted — surface a clear escalation message.
+            _msg = (
+                f"Revision limit reached: {_MAX_REVISIONS} revision(s) attempted "
+                "but reviewer still returns FAIL. Manual intervention required."
+            )
+            logging.warning(_msg)
+            _escalations.append(_msg)
+    else:
+        new_revision_count = revision_count
 
     return {
         "reviewer_output": output.result,
         "current_stage": "review_complete",
         "status": final_status,
+        "revision_count": new_revision_count,
         "errors": state.get("errors", []) + output.issues + _schema_errors,
-        "escalations": state.get("escalations", []) + output.escalations,
+        "escalations": _escalations,
     }
 
 
@@ -421,6 +550,9 @@ def persist_node(state: RunState) -> dict[str, Any]:
     dir_status = "completed" if status in ("completed", "needs_revision") else "failed"
     _persistence.finalize_run(run_id, dir_status)
 
+    if _persist_results and _worktree_manager and state.get("worktree_path"):
+        _worktree_manager.destroy(run_id)
+
     # Always return status explicitly so result["status"] is the resolved terminal value.
     return {"current_stage": "done", "status": status}
 
@@ -453,6 +585,27 @@ def route_after_approval(state: RunState) -> str:
             required_agents,
         )
         return "persist"
+
+
+def _get_subtask_for_agent(state: RunState, agent_name: str) -> dict | None:
+    """Return the first subtask assigned to agent_name from the dispatcher plan.
+
+    Matching is case-insensitive and uses the same alias map as routing, so
+    dispatcher plans that assign "Researcher" or "Engineer" resolve correctly.
+    Returns None when no plan exists or no matching subtask is found — callers
+    fall back to the top-level task_description in that case.
+    """
+    dispatcher_output = state.get("dispatcher_output", {})
+    plan = dispatcher_output.get("plan", {})
+    subtasks = plan.get("subtasks", []) if isinstance(plan, dict) else []
+    for subtask in subtasks:
+        if not isinstance(subtask, dict):
+            continue
+        assigned = subtask.get("assigned_agent", "")
+        canonical = _AGENT_NAME_ALIASES.get(assigned.lower(), assigned.lower())
+        if canonical == agent_name:
+            return subtask
+    return None
 
 
 def _get_required_agents(state: RunState) -> list[str]:
@@ -488,7 +641,11 @@ def route_after_builder(state: RunState) -> str:
 
 
 def route_after_review(state: RunState) -> str:
-    """After review, always go to persist."""
+    """After review: retry builder if FAIL and within revision limit, otherwise persist."""
+    verdict = state.get("reviewer_output", {}).get("verdict", "FAIL")
+    revision_count = state.get("revision_count", 0)
+    if verdict == "FAIL" and revision_count <= _MAX_REVISIONS:
+        return "builder"
     return "persist"
 
 
@@ -502,6 +659,7 @@ def create_pipeline(
     approval_handler: ApprovalHandler | None = None,
     persistence: RunPersistence | None = None,
     persist_results: bool = True,
+    worktree_manager: WorktreeManager | None = None,
 ) -> Any:
     """
     Create and compile the LangGraph dispatch pipeline.
@@ -511,16 +669,21 @@ def create_pipeline(
         approval_handler: Approval handler. Defaults to AutoApprovalHandler.
         persistence: Persistence handler. Defaults to file-based.
         persist_results: Whether to persist results to disk.
+        worktree_manager: Worktree lifecycle manager. Pass None (default) to
+            disable worktree creation — existing tests and stub runs are
+            unaffected. Pass a WorktreeManager instance to enable per-run
+            isolated git worktrees.
 
     Returns:
         A compiled LangGraph that can be invoked.
     """
     # Set module-level config for node functions
-    global _llm_client, _approval_handler, _persistence, _persist_results
+    global _llm_client, _approval_handler, _persistence, _persist_results, _worktree_manager
     _llm_client = llm_client or create_client()
     _approval_handler = approval_handler or AutoApprovalHandler()
     _persistence = persistence or RunPersistence()
     _persist_results = persist_results
+    _worktree_manager = worktree_manager
 
     # Build the graph
     graph = StateGraph(RunState)
@@ -571,7 +734,7 @@ def create_pipeline(
     graph.add_conditional_edges(
         "reviewer",
         route_after_review,
-        {"persist": "persist"},
+        {"persist": "persist", "builder": "builder"},
     )
 
     graph.add_edge("persist", END)
