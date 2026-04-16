@@ -162,12 +162,10 @@ class ReviewerAgent(BaseAgent):
     ) -> AgentOutput:
         """Tool-call loop: Reviewer calls checks directly and synthesises verdict."""
         build_output = agent_input.context.get("build_output", {})
-        raw_written = (
-            build_output.get("files_written")
-            if isinstance(build_output, dict)
-            else None
-        )
-        files_written: list[str] = raw_written if raw_written else []
+        _files_changed = build_output.get("files_changed", {}) if isinstance(build_output, dict) else {}
+        _created = _files_changed.get("created", []) if isinstance(_files_changed, dict) else []
+        _modified = _files_changed.get("modified", []) if isinstance(_files_changed, dict) else []
+        files_written: list[str] = [f for f in (_created + _modified) if isinstance(f, str)]
 
         file_tools = FileTools(Path(worktree_path_str))
         shell = ShellTools(Path(worktree_path_str))
@@ -295,12 +293,10 @@ class ReviewerAgent(BaseAgent):
         if worktree_path_str:
             try:
                 build_output = agent_input.context.get("build_output", {})
-                raw_written = (
-                    build_output.get("files_written")
-                    if isinstance(build_output, dict)
-                    else None
-                )
-                files_written: list[str] | None = raw_written if raw_written else None
+                _files_changed = build_output.get("files_changed", {}) if isinstance(build_output, dict) else {}
+                _created = _files_changed.get("created", []) if isinstance(_files_changed, dict) else []
+                _modified = _files_changed.get("modified", []) if isinstance(_files_changed, dict) else []
+                files_written: list[str] = [f for f in (_created + _modified) if isinstance(f, str)]
                 check_results = self._run_automated_checks(
                     worktree_path_str, files_written=files_written
                 )

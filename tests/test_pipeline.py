@@ -2583,7 +2583,7 @@ class TestReviewerShellTools:
             context={
                 "worktree_path": str(worktree),
                 # files_written is required to scope checks to the deliverable
-                "build_output": {"files_written": ["foo.py"]},
+                "build_output": {"files_changed": {"created": ["foo.py"], "modified": [], "deleted": []}},
             },
         )
         output = AgentOutput(task_id="t1", agent_role="reviewer")
@@ -2638,7 +2638,7 @@ class TestReviewerShellTools:
             acceptance_criteria=[],
             context={
                 "worktree_path": str(worktree),
-                "build_output": {"files_written": ["app.py"]},
+                "build_output": {"files_changed": {"created": ["app.py"], "modified": [], "deleted": []}},
             },
         )
         from ai_ops.agents.base import AgentOutput
@@ -2754,7 +2754,7 @@ class TestReviewerCheckScope:
             acceptance_criteria=[],
             context={
                 "worktree_path": str(worktree),
-                "build_output": {"files_written": ["add.py"]},
+                "build_output": {"files_changed": {"created": ["add.py"], "modified": [], "deleted": []}},
             },
         )
         agent._execute_llm(agent_input, AgentOutput(task_id="s1", agent_role="reviewer"))
@@ -2790,7 +2790,7 @@ class TestReviewerCheckScope:
             acceptance_criteria=[],
             context={
                 "worktree_path": str(worktree),
-                "build_output": {"files_written": ["module.py", "helper.py"]},
+                "build_output": {"files_changed": {"created": ["module.py", "helper.py"], "modified": [], "deleted": []}},
             },
         )
         agent._execute_llm(agent_input, AgentOutput(task_id="s2", agent_role="reviewer"))
@@ -2827,7 +2827,7 @@ class TestReviewerCheckScope:
             acceptance_criteria=[],
             context={
                 "worktree_path": str(worktree),
-                "build_output": {"files_written": ["add.py", "test_add.py"]},
+                "build_output": {"files_changed": {"created": ["add.py", "test_add.py"], "modified": [], "deleted": []}},
             },
         )
         agent._execute_llm(agent_input, AgentOutput(task_id="s3", agent_role="reviewer"))
@@ -3625,7 +3625,15 @@ class TestReviewerToolLoop:
             acceptance_criteria=["add works"],
             context={
                 "worktree_path": worktree_path,
-                "build_output": {"files_written": files_written or []},
+                # Use the builder's actual JSON contract key (files_changed.created),
+                # not the legacy files_written key the reviewer previously looked for.
+                "build_output": {
+                    "files_changed": {
+                        "created": files_written or [],
+                        "modified": [],
+                        "deleted": [],
+                    },
+                },
             },
         )
 
@@ -4001,6 +4009,77 @@ class TestReviewerToolLoop:
         assert tools_seen, "complete_with_tools was not called"
         assert tools_seen[0] == _REVIEWER_TOOLS, (
             f"Expected full _REVIEWER_TOOLS, got {[t['name'] for t in tools_seen[0]]}"
+        )
+
+    def test_files_written_extracted_from_files_changed_created(self, tmp_path, monkeypatch):
+        """Regression guard for smoke-035: reviewer must extract file paths from
+        build_output['files_changed']['created'], not the non-existent 'files_written' key.
+
+        Before the fix, files_written was always [] because the wrong key was read.
+        After the fix, pre-run checks fire and loop_tools is reduced to read_file only.
+        """
+        from ai_ops.agents.base import AgentInput, AgentOutput
+        from ai_ops.agents.reviewer import ReviewerAgent
+
+        worktree = tmp_path / "wt"
+        worktree.mkdir()
+
+        files_seen_by_checks: list[list[str]] = []
+
+        def capturing_checks(self_r, path, files_written=None):
+            files_seen_by_checks.append(files_written or [])
+            return {"ruff": {"status": "PASS", "returncode": 0, "output": ""}}
+
+        monkeypatch.setattr(ReviewerAgent, "_run_automated_checks", capturing_checks)
+
+        tools_seen = []
+
+        class _RecordingClient:
+            provider_name = "fake"
+            model_name = "fake"
+
+            def complete_with_tools(self_inner, system, user, tools, tool_executor, max_iterations=8):
+                tools_seen.append([t["name"] for t in tools])
+                return TestReviewerToolLoop._VERDICT_JSON, []
+
+            def complete(self_inner, *a, **kw):
+                return TestReviewerToolLoop._VERDICT_JSON
+
+        # Build output uses the builder's actual JSON contract: files_changed.created
+        agent_input = AgentInput(
+            run_id="smoke035-regression",
+            description="Review the build",
+            acceptance_criteria=[],
+            context={
+                "worktree_path": str(worktree),
+                "build_output": {
+                    "files_changed": {
+                        "created": ["nearest_integer/round.py", "tests/test_round.py"],
+                        "modified": [],
+                        "deleted": [],
+                    },
+                },
+            },
+        )
+
+        agent = ReviewerAgent(llm_client=_RecordingClient())
+        agent._execute_llm(agent_input, AgentOutput(task_id="t-smoke035", agent_role="reviewer"))
+
+        # _run_automated_checks must have been called with the real file list
+        assert files_seen_by_checks, (
+            "_run_automated_checks was not called — files_written was empty (wrong key read)"
+        )
+        assert set(files_seen_by_checks[0]) == {
+            "nearest_integer/round.py", "tests/test_round.py"
+        }, (
+            f"Wrong files passed to checks: {files_seen_by_checks[0]}. "
+            "Reviewer may still be reading 'files_written' instead of 'files_changed.created'."
+        )
+        # Pre-run returned results → loop_tools must be restricted to read_file
+        assert tools_seen, "complete_with_tools was not called"
+        assert tools_seen[0] == ["read_file"], (
+            f"Expected loop_tools=['read_file'] after pre-run, got {tools_seen[0]}. "
+            "Full tool set means pre-run checks did not fire."
         )
 
 
