@@ -645,10 +645,16 @@ def route_after_builder(state: RunState) -> str:
 
 
 def route_after_review(state: RunState) -> str:
-    """After review: retry builder if FAIL and within revision limit, otherwise persist."""
+    """After review: retry builder if FAIL and within revision limit, otherwise persist.
+
+    The revision loop only fires when the dispatcher explicitly planned for a builder.
+    Research-only runs (required_agents has no "builder") must never enter the loop
+    even when the reviewer returns FAIL.
+    """
     verdict = state.get("reviewer_output", {}).get("verdict", "FAIL")
     revision_count = state.get("revision_count", 0)
-    if verdict == "FAIL" and revision_count <= _MAX_REVISIONS:
+    required = _get_required_agents(state)
+    if verdict == "FAIL" and revision_count <= _MAX_REVISIONS and "builder" in required:
         return "builder"
     return "persist"
 

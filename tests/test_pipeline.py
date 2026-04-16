@@ -1166,6 +1166,70 @@ class TestConditionalRouting:
         assert result.get("builder_output") is None
         assert result.get("reviewer_output") is not None
 
+    def test_research_reviewer_fail_does_not_route_to_builder(self, stub_pipeline, monkeypatch):
+        """Regression guard for smoke-032: reviewer FAIL on a research+reviewer path must not
+        route to builder or enter the revision loop.
+
+        Before the fix, route_after_review unconditionally returned 'builder' on FAIL.
+        After the fix it gates on 'builder' in required_agents — which is absent here.
+        """
+        from ai_ops.agents.base import TaskStatus
+        from ai_ops.agents.dispatcher import DispatcherAgent
+        from ai_ops.agents.reviewer import ReviewerAgent
+
+        def research_and_reviewer_dispatch(self, agent_input, output):
+            output.status = TaskStatus.COMPLETED
+            output.result = {
+                "classification": {
+                    "task_type": "research",
+                    "complexity": "simple",
+                    "estimated_subtasks": 2,
+                    "required_agents": ["research", "reviewer"],
+                },
+                "plan": {"run_id": agent_input.run_id, "subtasks": [], "execution_order": []},
+            }
+            return output
+
+        def failing_reviewer(self, agent_input, output):
+            output.status = TaskStatus.COMPLETED
+            output.result = {
+                "verdict": "FAIL",
+                "verdict_reason": "Research findings are incomplete",
+                "acceptance_criteria": [],
+                "automated_checks": [],
+                "findings": [],
+                "policy_compliance": [],
+                "plan_adherence": {"matches_plan": "not_verified", "deviations": "none"},
+                "missing_items": [],
+                "summary": "Research did not meet criteria.",
+                "recommendation": "revise and re-review",
+                "build_context_received": False,
+            }
+            return output
+
+        monkeypatch.setattr(DispatcherAgent, "execute", research_and_reviewer_dispatch)
+        monkeypatch.setattr(ReviewerAgent, "execute", failing_reviewer)
+        pipeline, _ = stub_pipeline
+        result = pipeline.invoke({
+            "run_id": "test-cr-smoke032",
+            "task_description": "Research LangGraph vs Temporal trade-offs",
+            "acceptance_criteria": ["Compare scheduling semantics"],
+            "constraints": [],
+            "approval_level": 0,
+        })
+
+        assert result["current_stage"] == "done"
+        # Builder must NOT have run — no builder in required_agents
+        assert result.get("builder_output") is None, (
+            "builder_output present — route_after_review incorrectly routed to builder "
+            "despite 'builder' not being in required_agents (smoke-032 regression)"
+        )
+        # Research and reviewer both ran
+        assert result.get("research_output") is not None
+        assert result.get("reviewer_output") is not None
+        # Run must have persisted cleanly — not stalled
+        assert result["current_stage"] == "done"
+
     def test_full_chain_still_runs_when_all_three_required(self, stub_pipeline):
         """Default stub (all three agents) must still run all three — regression guard."""
         pipeline, _ = stub_pipeline
